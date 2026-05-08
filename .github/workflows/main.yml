@@ -67,13 +67,19 @@ jobs:
             
             echo "Split complete. Parts created:"
             ls -lh ${CONTENT_NAME}.*
+            
+            # Clean up temp directory
+            rm -rf temp_downloads
           else
-            echo "Files under 100MB. Creating single zip..."
-            zip -r "${CONTENT_NAME}.zip" temp_downloads/
+            echo "Files are 100MB or less. Moving files directly..."
+            
+            # Move files from temp_downloads to a timestamped folder
+            mkdir -p "${CONTENT_NAME}"
+            mv temp_downloads/* "${CONTENT_NAME}/"
+            
+            # Clean up temp directory
+            rm -rf temp_downloads
           fi
-          
-          # Clean up temp directory
-          rm -rf temp_downloads
 
       - name: Configure Git
         run: |
