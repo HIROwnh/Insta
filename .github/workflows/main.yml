@@ -1,0 +1,102 @@
+name: Instagram Downloader
+
+on: 
+  workflow_dispatch:
+    inputs:
+      url:
+        description: 'Instagram url (Posts, Reels, Profile)'
+        required: true
+        type: string
+      output_folder:
+        description: 'Output folder name'
+        required: false
+        default: 'downloads'
+        type: string
+  
+permissions: 
+  contents: write
+
+jobs:
+  download:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out Repo
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Setup downloader
+        run: |
+          pip install parth-dl
+          
+      - name: Create output directory
+        run: |
+          mkdir -p ${{ github.event.inputs.output_folder }}
+          cd ${{ github.event.inputs.output_folder }}
+          mkdir -p temp_downloads
+          
+      - name: Download Content
+        run: |
+          cd ${{ github.event.inputs.output_folder }}/temp_downloads
+          parth-dl ${{ github.event.inputs.url }}
+          
+      - name: Process and split large files
+        run: |
+          cd ${{ github.event.inputs.output_folder }}
+          
+          # Get timestamp for unique naming
+          TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+          CONTENT_NAME="instagram_${TIMESTAMP}"
+          
+          # Check if any files were downloaded
+          if [ -z "$(ls -A temp_downloads)" ]; then
+            echo "No files downloaded. Exiting."
+            exit 1
+          fi
+          
+          # Calculate total size in MB
+          TOTAL_SIZE=$(du -sm temp_downloads | cut -f1)
+          echo "Total download size: ${TOTAL_SIZE}MB"
+          
+          if [ $TOTAL_SIZE -gt 100 ]; then
+            echo "Files exceed 100MB. Splitting into 100MB parts..."
+            
+            # Create zip with 100MB splits
+            zip -r -s 100m "${CONTENT_NAME}" temp_downloads/
+            
+            echo "Split complete. Parts created:"
+            ls -lh ${CONTENT_NAME}.*
+          else
+            echo "Files under 100MB. Creating single zip..."
+            zip -r "${CONTENT_NAME}.zip" temp_downloads/
+          fi
+          
+          # Clean up temp directory
+          rm -rf temp_downloads
+
+      - name: Configure Git
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+
+      - name: Commit and push files
+        run: |
+          git add ${{ github.event.inputs.output_folder }}
+          
+          # Check if there are changes to commit
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          
+          git commit -m "Add Instagram download - $(date +%Y-%m-%d_%H:%M:%S)"
+          git push
+
+      - name: Upload artifacts (backup)
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: instagram-download-${{ github.run_number }}
+          path: ${{ github.event.inputs.output_folder }}
+          retention-days: 7
